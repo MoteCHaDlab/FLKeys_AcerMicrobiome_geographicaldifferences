@@ -33,13 +33,8 @@ library("tidyverse")
 library("OutlierDetection")
 windowsFonts("Times New Roman" = windowsFont("Times New Roman"))
 
-## for map
-library("rnaturalearth")
-library("rnaturalearthdata")
-library("rgeos")
-library("maps")
-library("usmap")
 ```
+
 ### Get the data and make full dataset phyloseq objects
 ```{r}
 ps_acer<-readRDS("acer_ps_rename_rare.rds")
@@ -53,7 +48,6 @@ d = as(sample_data(ps_acer), "data.frame")
 d[d$Region=="Middle Keys",]$Outlier<-"No"
 d <- cbind(d, di)
 sample_data(ps_acer)<-d
-#write.csv(data.frame(sample_data(ps)),"sampledata2.csv")
 
 ```
 

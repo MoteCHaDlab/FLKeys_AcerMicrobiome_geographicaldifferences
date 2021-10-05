@@ -1,0 +1,51 @@
+---
+title: "Acer Microbiome Outlier Detection"
+output: html_notebook
+---
+
+## Get outliers first to add to sample data 
+```{r}
+# Get outliers to add to 
+out<-function(p){
+    df = as(sample_data(p), "data.frame")
+    ords<-ordinate(p, "NMDS", "bray", autotransform = FALSE, parallel = 48, trymax = 10^4, maxit = 10^4)
+    str(ords)
+    ord.pts<-data.frame(ords$points[,1:2])
+    out.results<-OutlierDetection(ord.pts)
+    out.results$`Scatter plot`
+    outlier.list<-row.names(out.results$`Outlier Observations`)
+    df$Outlier<-"No"
+    df[outlier.list,]$Outlier<-"Yes"
+    sample_data(p)<-df
+    ps_acer
+    df = as(sample_data(p), "data.frame")
+    df$Aquarick
+    i = 1
+    while(i != length(df$Sample.ID)){
+      if(df$Outlier[i] != "Yes")
+      {
+        df$Aquarick[i] = "High Aquarickettsia"
+      }
+      else
+      {
+        df$Aquarick[i] = "Low Aquarickettsia"
+      }
+      i <- i + 1
+    }
+    sample_data(p)<-df
+    p
+    i<-1
+    while(i != length(df$Sample.ID)){
+      if(is.na(df$Outlier[i])==TRUE)
+      {
+        df$Outlier[i] = "No"
+        print("hello world")
+      }
+      i <- i + 1
+    }
+    sample_data(p)<-df
+}
+out(ps_acer)
+out(ps_acer_norare)
+sample_data(ps_acer_norare)
+```

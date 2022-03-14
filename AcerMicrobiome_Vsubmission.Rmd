@@ -3,6 +3,7 @@ title: "Acer Microbiome to Phyloseq"
 output: html_notebook
 ---
 ###load packages
+Updated 3/9/21 for code to work with R version 4.1.1 (2021-08-10)
 ```{r}
 set.seed(100)
 #library("devtools")
@@ -30,7 +31,8 @@ library("magrittr")
 library("ape") 
 library("RColorBrewer")
 library("tidyverse")
-library("OutlierDetection")
+library("corncob")
+library(forcats)
 windowsFonts("Times New Roman" = windowsFont("Times New Roman"))
 
 ```
@@ -41,11 +43,12 @@ ps_acer<-readRDS("acer_ps_rename_rare.rds")
 ps_acer
 ps_acer_norare<-readRDS("acer_ps_rename.rds")
 ps_acer_norare
+d<-data.frame()
+d <- data.frame(sample_data(ps_acer))
+d[d$Region=="Middle Keys",]$Outlier<-"No" #wasn't saved in phyloseq object used so have to add now
+#add the time spent in nursery columns
 di<-read.csv("acer_metadata_update_1_21_2021.csv")
 di<-di[1:74,15:17]
-d<-data.frame()
-d = as(sample_data(ps_acer), "data.frame")
-d[d$Region=="Middle Keys",]$Outlier<-"No"
 d <- cbind(d, di)
 sample_data(ps_acer)<-d
 
@@ -79,7 +82,7 @@ perma<- function(p){ #needs a phyloseq object
   df = as(sample_data(p), "data.frame")
   d = phyloseq::distance(p, "bray")
   df$Site <- as.factor(df$Region)
-  PERMANOVA <- adonis(d ~ Site, df)
+  PERMANOVA <- adonis2(d ~ Site, df)
   PERMANOVA
 }
 print("full dataset")
@@ -95,7 +98,7 @@ permnoout<-perma(psnoout)
 permnoout
 ```
 
-#### set colors
+#### set colors for plots
 ```{r}
 df <- sample_data(ps_acer)
 length(levels(factor(df$Region)))
@@ -149,7 +152,7 @@ print(noout_nMDS)
 
 Fig2 <- full_nMDS + noout_nMDS+ outlier_nMDS + plot_annotation(tag_levels="A")+plot_layout(guides='collect')
 Fig2
-ggsave("Figure3.png", plot = Fig2, width = 20, height = 10, units = "cm", dpi = 300)
+#ggsave("Figure3.png", plot = Fig2, width = 20, height = 10, units = "cm", dpi = 300)
 ```
 It says probable convergence error, but the ordinate() results all worked and the stress values are good.
 
@@ -157,7 +160,6 @@ It says probable convergence error, but the ordinate() results all worked and th
 ## betadisper
 
 ```{r,fig.width=10}
-
 
 par(mfrow = c(1, 2),family="Times New Roman")
 p<-psnoout # nooutlier dataset
@@ -188,7 +190,7 @@ title(outer=TRUE,main="B",cex.main=1.5,line=-1.7,adj=.5)
 gmod_out<-g_mod
 
 ```
-
+...Same but now prettier.
 ```{r}
 DF_noout <- data.frame(group = gmod_noout$group, distances = gmod_noout$distances)
 beta_noout<-DF_noout%>%ggplot(aes(group,distances,color=group)) +
@@ -221,13 +223,13 @@ beta_out<-DF_out%>%ggplot(aes(group,distances,color=group)) +
   annotate("text", x = 1, y=.65, label = "a")+
   annotate("text", x = 2, y=.35, label = "a")
 
-Fig3 <- beta_noout +beta_out + plot_annotation(tag_levels="A")+plot_layout(guides='collect')
-Fig3
-ggsave("Figure4.png", plot = Fig3, width = 20, height = 10, units = "cm", dpi = 300)
+Fig4 <- beta_noout +beta_out + plot_annotation(tag_levels="A")+plot_layout(guides='collect')
+Fig4
+#ggsave("Figure4.png", plot = Fig4, width = 20, height = 10, units = "cm", dpi = 300)
 
 ```
 
-
+Now the full dataset betadisper analysis:
 ```{r}
 p<-ps #full dataset
 sampledf<-data.frame(sample_data(p))
@@ -260,78 +262,17 @@ DF_full%>%ggplot(aes(group,distances,color=group)) +
 
 ```
 
+## Visualizing relative abundances
 
-## relative abundances
-### make mycolors
-```{r}
-physeq.f<-phyloseq::filter_taxa(ps, function(x) sum(x >= 100) > (0.01*length(x)), prune = TRUE) #filter out super small numbers
-physeq.f 
-
-physeq.f.ra <- transform_sample_counts(physeq.f, function(x) x*100/sum(x))
-physeq.f.ra.ord <- tax_glom(physeq.f.ra, "Genus",NArm=FALSE)
-propData <- as.data.frame((otu_table(physeq.f.ra.ord)))
-plotDF <- propData %>%
-  rownames_to_column(var="taxa") %>%
-  melt() %>%
-  magrittr::set_names(c("sample", "taxa", "relab"))
-head(plotDF)#just checking it worked
-taxonomy.2 <- tax_table(physeq.f) %>%
-  as.data.frame() %>%
-  rownames_to_column(var="taxa")
-head(taxonomy.2)#just checking it worked
-head(plotDF)#just checking it worked
-plotDF <- left_join(plotDF, taxonomy.2, by="taxa") %>%
-  select(taxa, sample, relab, Genus) #would need to update here too if you change it.
-head(plotDF)#just checking it worked
-plotDF[plotDF$relab <5, ]$Genus<-"<5% abundance"
-
-sampdata<-data.frame(sample_data(physeq.f.ra.ord)) #make dataframe of the sample data
-metadata.2 <- sampdata %>%
-  rownames_to_column(var="sample") #make a column of rownames (sample)
-head(metadata.2)
-
-#combine plotDF1 and metadata.2 by sample name
-plotDF <- left_join(plotDF, metadata.2, by="sample") 
-head(plotDF) #just checking it worked
-
-```
-
-
-#### set colors
-```{r}
-length(levels(factor(plotDF$Genus)))
-mycolors <- c("white","cyan4","dodgerblue4","cadetblue2","yellow","mediumorchid4","firebrick3","orange","deeppink","lightcoral")
-names(mycolors)<-levels(factor(plotDF$Genus))
-mycolors
-#mycolors<-c("#999999", "#FFFF00",  "#CC3300","#0072B2","#660066", "#E69F00", "#56B4E9","#CC79A7","#1B9E77","#AAE247") #colors used by Grace?
-```
-```{r}
-plotDF<-plotDF[order(plotDF$Outlier),]
-plotDF$sample[6133:6142]
-plotDF$sample<-factor(plotDF$sample,levels=c(plotDF$sample[1:64],plotDF$sample[6133:6142]))
-ggplot(plotDF, aes(x=sample, relab, fill=Genus)) + 
-  #make it a barplot with classes stacked on top of each other
-  geom_bar(stat="identity", position = "stack",aes(fill = reorder(Genus, -relab))) + 
-  #set x-axis labels to be oriented vertically, and set the size of the text to 6.5
-  theme(axis.text.x = element_text(angle = 90,size = 6.5)) + 
-  #set the colors being filled in by class to the mycolors variable made earlier
-  scale_fill_manual(values = mycolors,limits = levels(plotDF$Genus)) + 
-  #facet wrap (separate out) by Region
-  facet_grid(~Region,space="free_x",scales="free_x",drop=TRUE) + 
-  #set legend title size to 8 and legend text size to 6
-  theme(legend.title = element_text(size = 8),legend.text = element_text(size = 6),legend.position = "bottom")+
-  xlab("2020 Mote ID")+
-  ylab("% Relative Abundance")
-
-```
-3, 6, 19, 13
-Grace's code
 ```{r}
 # transform to relative abundance
 ps_rel = phyloseq::filter_taxa(ps_acer, function(x) mean(x) > 0.1, TRUE)
 ps_rel = transform_sample_counts(ps_rel, function(x) x / sum(x) )
-ps_rel
-
+samdf<-data.frame(sample_data(ps_rel))
+samdf$out.num<-c()
+samdf<-samdf%>%
+  mutate(out.num= if_else(Outlier=="Yes",2,1))
+sample_data(ps_rel)<-samdf
 # melt the data at the Genus level
 ps_rel_genus_melt <- ps_rel %>%
   tax_glom(taxrank = "Genus") %>%
@@ -353,34 +294,33 @@ ps_rel_genus_melt$genus[ps_rel_genus_melt$genus != "Aquarickettsia" &
                            ps_rel_genus_melt$genus != "Family_P3OB-42" &
                            ps_rel_genus_melt$genus != "Romboutsia" &
                            ps_rel_genus_melt$genus != "Spirochaeta_2" &
-                           ps_rel_genus_melt$genus != "Unclassified_ASV_13"] <- NA
-
+                           ps_rel_genus_melt$genus != "Unclassified_ASV_13"] <- "low abundance"
+#ps_rel_genus_melt$Outlier<-as.factor(ps_rel_genus_melt$Outlier)
+  
+ps_rel_genus_melt$X2020_Mote_ID <-as.factor(ps_rel_genus_melt$X2020_Mote_ID)
 
 # plot
-bar_species = ggplot(ps_rel_genus_melt, aes(x = reorder(X2020_Mote_ID, Outlier), y=Abundance)) + 
-  geom_bar(stat="identity", position="fill", aes(fill = reorder(genus, Abundance))) +
-  scale_fill_manual(values=c("#999999", "#FFFF00",  "#CC3300","#0072B2","#660066", "#E69F00", "#56B4E9","#CC79A7","#1B9E77","#AAE247"), 
-                    breaks = c("Aquarickettsia","Enterococcus","Unclassified_ASV_3","Unclassified_ASV_6",
-                               "Family_Helicobacteraceae","Family_P3OB-42","Romboutsia","Spirochaeta_2", "Unclassified_ASV_13"),
-                    labels = c("Aquarickettsia","Enterococcus","Unclassified_ASV_3","Unclassified_ASV_6",
-                               "Family_Helicobacteraceae","Family_P3OB-42","Romboutsia","Spirochaeta_2", "Unclassified_ASV_13")) +
+bar_species = ggplot(ps_rel_genus_melt, aes(x = forcats::fct_reorder(X2020_Mote_ID, out.num), y=Abundance)) + 
+  geom_bar(stat="identity", position="fill", aes(fill = with(ps_rel_genus_melt,reorder(genus, Abundance)))) +
+  scale_fill_manual(values=c("#1B9E77","#0072B2", "#56B4E9","#E69F00","#660066", "#CC3300", "#FFFF00", "#CC79A7","dark grey","light grey"), 
+                    breaks = c("Aquarickettsia","Enterococcus","Unclassified_ASV_3","Unclassified_ASV_6","Family_Helicobacteraceae","Family_P3OB-42","Romboutsia","Spirochaeta_2", "Unclassified_ASV_13","low abundance"),
+                    labels = c("Aquarickettsia","Enterococcus","Unclassified_ASV_3","Unclassified_ASV_6","Family_Helicobacteraceae","Family_P3OB-42","Romboutsia","Spirochaeta_2", "Unclassified_ASV_13","low abundance")) +
   facet_grid(~Region, scales = "free_x", space = "free_x") +
   theme_bw() +
-  #theme(legend.text = element_text(face = "italic")) +
+  theme(legend.text = element_text(face = "italic")) +
   ylab("Relative Abundance") +
   xlab("2020 Mote ID") +
-  theme(axis.text.x = element_text(angle = 50, hjust = 1)) +
-  theme(aspect.ratio = 40) +
+  theme(axis.text.x = element_text(angle = 75, hjust = 1)) +
+  #theme(aspect.ratio = 40) +
   theme(strip.text.x = element_text(size = 13)) +
   theme(legend.text=element_text(size=10)) +
   theme(title=element_text(size=14, hjust=0.5),
         axis.title=element_text(size=14),
         axis.text = element_text(size=10)) +
   labs(fill = "Genus", size = "Genus")
-bar_species
-ggsave(filename="Figure2.png", plot=bar_species,width=35, height=20 , units="cm",device="png", dpi=300)
 
-ggsave("Figure3.png", plot = Fig2, width = 25, height = 10, units = "cm", dpi = 300)
+bar_species
+#ggsave(filename="Figure2.png", plot=bar_species,width=35, height=20 , units="cm",device="png", dpi=300)
 
 ```
 
@@ -473,41 +413,12 @@ div
 ```{r}
 fig5<-ric+div+plot_annotation(tag_levels="A")+plot_layout(guides='collect')
 fig5
-ggsave("Figure5.png", plot = fig5, width = 20, height = 10, units = "cm", dpi = 300)
+#ggsave("Figure5.png", plot = fig5, width = 20, height = 10, units = "cm", dpi = 300)
 
 ```
-```{r}
-
-div.mod<-lm(shannon1~Max.Years.Spent.in.Nursery,data=noout_alpha)
-anova(div.mod)
-div.mod1<-data.frame(div.mod$model)
-div.plot<-ggplot(div.mod$model, aes(x =Max.Years.Spent.in.Nursery,y=shannon1)) + geom_point()+
-   stat_smooth(method = "lm", col = "red",se=TRUE,size=.5,alpha=0.1)+
-  theme(panel.background = element_blank())+ 
-  theme(text = element_text(family = "Times New Roman"))+
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))+
-  theme(legend.position="None")+
-  labs(x="time spent in nursery",y="shannon diversity")
-div.plot
-
-fit1 <- lm(log(shannon1)~Max.Years.Spent.in.Nursery,data=subset(noout_alpha,subset=Region=="Lower Keys"))
-shapiro.test(fit1$residuals)
-summary(fit1)
-
-rich.mod<-lm(rich1~Max.Years.Spent.in.Nursery,data=full_alpha)
-rich.plot<-ggplot(rich.mod$model, aes_string(x = names(rich.mod$model)[2], y = names(rich.mod$model)[1])) + geom_point()+
-   stat_smooth(method = "lm", col = "red",se=TRUE,size=.5,alpha=0.1,lty=2)+
-  theme(panel.background = element_blank())+ theme(text = element_text(family = "Times New Roman"))+
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))+theme(legend.position="None")+
-  labs(x="time spent in nursery",y="richness")
-rich.plot
-fit1 <- lm((rich1)~Max.Years.Spent.in.Nursery,data=full_alpha)
-shapiro.test(fit1$residuals)
-summary(fit1)
-```
 
 
-#### Stats on richness
+#### Stats on Alpha Diversity
 ```{r}
 print("full dataset")
 kruskal.test(rich1~Region,data=full_alpha)
@@ -519,7 +430,7 @@ print("out vs no out")
 kruskal.test(rich1~Outlier,data=full_alpha)
 ```
 
-#### stats on shannon diversity
+
 ```{r}
 print("full dataset")
 kruskal.test(shannon1~Region,data=full_alpha)
@@ -566,39 +477,6 @@ nooutrichpair<-richpairkruskal(noout_alpha)
 nooutrichpair
 ###NO OUTLIERS INCLUDED SINCE ONLY 2 GROUPS (LOW AND UP)
 ```
-```{r}
-
-sampledf<-data.frame(sample_data(ps))
-sampledf$Region<-as.factor(sampledf$Region)
-region.list<-levels(sampledf$Region)
-region.list2<-c(region.list,"lower out","upper out")
-pvals<-c()
-locations<-c()
-for (i in 1:length(region.list)){
-  region.choose<-region.list[i]
-  alph_sub<-subset(noout_alpha,Region==region.choose)
-  alphaout_lower<-subset(out_alpha,Region=="Lower Keys")
-  alphaout_upper<-subset(out_alpha,Region=="Upper Keys")
-  avlow<-rbind(alphaout_lower,alph_sub)
-  avup<-rbind(alphaout_upper,alph_sub)
-  PERM.l<-kruskal.test(rich1~Outlier,avlow) #change to kruskal
-  print(PERM.l)
-  PERM.u<-kruskal.test(rich1~Outlier,avup) #change to kruskal
-  print(PERM.u)
-  pvals<-c(pvals,PERM.l$'p.value',PERM.u$'p.value')
-}
-full_loc<-c("Lower","Lower","Middle","Middle","Upper","Upper")
-out_loc<-c("lower","upper","lower","upper","lower","upper")
-combinedtest<-cbind(full_loc,out_loc,pvals)
-mult_perm<-data.frame(combinedtest)
-mult_perm
-mult_perm$pvaladj<-p.adjust(mult_perm$pvals,method="bonferroni")
-mult_perm
-rbind(nooutrichpair,mult_perm)
-p.adjust(c(mult_perm$pvals,nooutrichpair$pvals),method="bonferroni")
-```
-
-
 #rich no out  a, b, b
 #shannon no out a, ab, b 
 
@@ -638,27 +516,32 @@ nooutshanpair
 ###NO OUTLIERS INCLUDED SINCE ONLY 2 GROUPS (LOW AND UP)
 ```
 #### Corncob
+Use unrarified data
 ```{r}
-library(corncob)
+sample_data(ps_acer_norare)$Outlier<-sample_data(ps_acer)$Outlier
+ps_noout_nr<-subset_samples(ps_acer_norare,Outlier!="Yes")
+ps_noout_nr
+ps_noout
+ps_out_nr<-subset_samples(ps_acer_norare,Outlier=="Yes")
+ps_out_nr
 ```
-#### Analysis for multiple taxa
 
 ```{r}
 set.seed(1)
-da_analysis<-differentialTest(formula = ~Region,
+da_analysis_nr<-differentialTest(formula = ~Region,
                               phi.formula = ~Region,
                               formula_null = ~1,
                               phi.formula_null = ~1,
                               test="Wald",
                               boot=FALSE,
-                              data=ps_noout,
+                              data=ps_noout_nr,
                               fdr_cutoff = 0.05)
 ```
  
 ```{r}
-da_analysis
-da_analysis$significant_models
-plot(da_analysis,level="Genus")
+da_analysis_nr
+da_analysis_nr$significant_models
+plot(da_analysis_nr,level="Genus")
 ```
 
 
@@ -669,68 +552,16 @@ da_analysis_out<-differentialTest(formula = ~Region,
                               phi.formula_null = ~1,
                               test="Wald",
                               boot=FALSE,
-                              data=ps_justout,
+                              data=ps_out_nr,
                               fdr_cutoff = 0.05)
 ```
  
 
 ```{r}
-da_analysis_out
+da_analysis_out$significant_taxa
 da_analysis_out$significant_models
 plot(da_analysis_out,level="Genus")
-plot(da_analysis_out2,level="Genus")
 
-```
-```{r}
-da_analysis_highlow<-differentialTest(formula = ~Outlier,
-                              phi.formula = ~Outlier,
-                              formula_null = ~1,
-                              phi.formula_null = ~1,
-                              test="Wald",
-                              boot=FALSE,
-                              data=ps,
-                              fdr_cutoff = 0.05)
-```
- 
-
-```{r}
-da_analysis_highlow
-da_analysis_highlow$significant_models
-plot(da_analysis_highlow,level="Genus")
-
-
-```
-
-
-```{r}
-ps_low<-subset_samples(ps,Region=="Lower Keys")
-
-lk_da_analysis_highlow<-differentialTest(formula = ~Outlier,
-                              phi.formula = ~Outlier,
-                              formula_null = ~1,
-                              phi.formula_null = ~1,
-                              test="Wald",
-                              boot=FALSE,
-                              data=ps_low,
-                              fdr_cutoff = 0.05)
-ps_up<-subset_samples(ps,Region=="Upper Keys")
-
-uk_da_analysis_highlow<-differentialTest(formula = ~Outlier,
-                              phi.formula = ~Outlier,
-                              formula_null = ~1,
-                              phi.formula_null = ~1,
-                              test="Wald",
-                              boot=FALSE,
-                              data=ps_up,
-                              fdr_cutoff = 0.05)
-
-```
-
-```{r}
-
-plot(lk_da_analysis_highlow,level="Genus")
-
-plot(uk_da_analysis_highlow,level="Genus")
 
 ```
 
@@ -738,7 +569,7 @@ plot(uk_da_analysis_highlow,level="Genus")
 ```{r}
 #from Becker et al in review
 #Write a function to extract the significant taxa and put it in a dataframe with a for loop so you can rearrange the levels of the taxa to make a nice ordered graph. 
-da_analysis$significant_models[[2]]$coefficients
+da_analysis_nr$significant_models[[2]]$coefficients
 
 sigtaxto_df_2options <- function(daout, psobj,uporlow) {#2 or 3
   df.out <- c()
@@ -764,13 +595,13 @@ sigtaxto_df_2options <- function(daout, psobj,uporlow) {#2 or 3
 }
 
 
-mid.forgraph <- sigtaxto_df_2options(da_analysis, ps_noout,2) #make a df of the corncob output and the taxonomy
+mid.forgraph <- sigtaxto_df_2options(da_analysis_nr, ps_noout_nr,2) #make a df of the corncob output and the taxonomy
 #Change the levels of the $asvtaxa row so that it reorders the plot by decreasing coefficients
 #mid.forgraph <- mid.forgraph[order(mid.forgraph$Estimate), ]
 mid.forgraph$asvtaxa <- factor(mid.forgraph$asvtaxa, levels = as.vector(mid.forgraph$asvtaxa))
 
 
-up.forgraph <- sigtaxto_df_2options(da_analysis, ps_noout,3) #make a df of the corncob output and the taxonomy
+up.forgraph <- sigtaxto_df_2options(da_analysis_nr, ps_noout_nr,3) #make a df of the corncob output and the taxonomy
 #Change the levels of the $asvtaxa row so that it reorders the plot by decreasing coefficients
 #up.forgraph <- up.forgraph[order(up.forgraph$Estimate), ]
 up.forgraph$asvtaxa <- factor(up.forgraph$asvtaxa, levels = as.vector(up.forgraph$asvtaxa))
@@ -790,9 +621,9 @@ lowmid<-ggplot(mid.forgraph, aes(x = asvtaxa, y = Estimate, fill = Genus)) +
   labs(x = " ", y = "Coefficient",family="Times New Roman") +
   geom_hline(yintercept = 0, linetype = "dashed", color = "darkgray")+
   theme(legend.position = "none",axis.text.x=element_text(family="Times New Roman",size=12),axis.text.y=element_text(family="Times New Roman",size=12))+
-  annotate("text",x=8.3,y=-4,label="Lower Keys",family="Times New Roman",size=3)+
-  annotate("text",x=8.3,y=1.9,label="Middle Keys",family="Times New Roman",size=3)
-
+  annotate("text",x=10.2,y=-3.9,label="Lower Keys",family="Times New Roman",size=3)+
+  annotate("text",x=10.2,y=1.1,label="Middle Keys",family="Times New Roman",size=3)
+lowmid
 
 lowup<-ggplot(up.forgraph, aes(x = asvtaxa, y = Estimate, fill = Genus)) +
   geom_errorbar(aes(ymin = Estimate-StdError, ymax = Estimate+StdError), color = "black", width = .3, position=position_dodge(.9)) +
@@ -804,11 +635,11 @@ lowup<-ggplot(up.forgraph, aes(x = asvtaxa, y = Estimate, fill = Genus)) +
   theme_bw() +
   labs(x = "", y = "Coefficient",family="Times New Roman") +
   geom_hline(yintercept = 0, linetype = "dashed", color = "darkgray")+theme(axis.text.y=element_blank(),legend.position="none",axis.text.x=element_text(family="Times New Roman",size=12))+
-  annotate("text",x=8.3,y=-5,label="Lower Keys",family="Times New Roman",size=3)+
-  annotate("text",x=8.3,y=1.9,label="Upper Keys",family="Times New Roman",size=3)
+  annotate("text",x=10.2,y=-4.8,label="Lower Keys",family="Times New Roman",size=3)+
+  annotate("text",x=10.2,y=1.5,label="Upper Keys",family="Times New Roman",size=3)
+lowup
 
-
-out.forgraph <- sigtaxto_df_2options(da_analysis_out, psout,2) #make a df of the corncob output and the taxonomy
+out.forgraph <- sigtaxto_df_2options(da_analysis_out, ps_out_nr,2) #make a df of the corncob output and the taxonomy
 #Change the levels of the $asvtaxa row so that it reorders the plot by decreasing coefficients
 #up.forgraph <- up.forgraph[order(up.forgraph$Estimate), ]
 out.forgraph$asvtaxa <- factor(out.forgraph$asvtaxa, levels = as.vector(out.forgraph$asvtaxa))
@@ -844,47 +675,49 @@ sample_data(physeq.f)
 
 physeq.f.ra <- transform_sample_counts(physeq.f, function(x) x*100/sum(x))
 #look at graces code and do mean!
-#want ASV_1, ASV_2, ASV_5, ASV_8, ASV_10,ASV_12, ASV_15, ASV_17
+#want ASV_1, ASV_2, ASV_5, ASV_8, ASV_10,ASV_12, ASV_14, ASV_17, ASV_38, ASV_43
 p<-physeq.f.ra
 
 o<-otu_table(p)
 propData <- as.data.frame(o)
 sample_data(p)$Region.Outlier<-rownames(sample_data(p))
 t<-data.frame(cbind(levels(as.factor(sample_data(p)$Region.Outlier))))
-t <-cbind(t,propData$ASV_1,propData$ASV_2,propData$ASV_5,propData$ASV_8,propData$ASV_10,propData$ASV_12, propData$ASV_15,propData$ASV_17)
-colnames(t)<-c("Region.Outlier","ASV_1", "ASV_2", "ASV_5", "ASV_8", "ASV_10","ASV_12", "ASV_15", "ASV_17")
+t <-cbind(t,propData$ASV_1,propData$ASV_2,propData$ASV_5,propData$ASV_8,propData$ASV_10,propData$ASV_12, propData$ASV_14,propData$ASV_17,propData$ASV_38,propData$ASV_43)
+colnames(t)<-c("Region.Outlier","ASV_1", "ASV_2", "ASV_5", "ASV_8", "ASV_10","ASV_12", "ASV_14", "ASV_17", "ASV_38","ASV_43")
 highlow<-c("High-Aquarickettsia","Low-Aquarickettsia","High-Aquarickettsia","High-Aquarickettsia","Low-Aquarickettsia")
 region<-c("Lower Keys","Lower Keys","Middle Keys","Upper Keys","Upper Keys")
 t<-cbind(highlow,region,t)
 pcm = melt(t, id.vars = c("Region.Outlier","region","highlow")) #convert data frame from a "wide" format to a "long" format
 
-mycolors2 <- c("#1B9E77","#CC79A7","#1B9E77","#CC79A7","#660066","blue","yellow","red")
+mycolors2 <- c("#1B9E77","#CC79A7","#1B9E77","#CC79A7","#660066","blue","#1B9E77","red","#1B9E77","#1B9E77")
 names(mycolors2)<-levels(pcm$variable)
 mycolors2
-levels(pcm$variable)<-c("Aquarickettsia (ASV_1)","Spirochaeta_2 (ASV_2)","Aquarickettsia (ASV_5)","Spirochaeta_2 (ASV_8)","Family_Helicobacteraceae (ASV_10)","Unclassified_ASV_12 (ASV_12)","Romboutsia (ASV_15)","Cetobacterium (ASV_17)")
+levels(pcm$variable)<-c("Aquarickettsia (ASV_1)","Spirochaeta_2 (ASV_2)","Aquarickettsia (ASV_5)","Spirochaeta_2 (ASV_8)","Family_Helicobacteraceae (ASV_10)","Unclassified_ASV_12 (ASV_12)","Aquarickettsia (ASV_14)","Cetobacterium (ASV_17)",'Aquarickettsia (ASV_38)',"Aquarickettsia (ASV_43)")
 names(mycolors2)<-levels(pcm$variable)
 xx<-ggplot(pcm, aes(x = region, y = variable,fill=variable)) + 
   geom_point(aes(size = as.numeric(value)), alpha = 0.75, shape = 21) +  
   scale_size_continuous(limits = c(0.00001, 100), range = c(1,12), breaks = c(.1,1,5,10,50,95)) +  
-  labs( x= "", y = "", size = "Relative abundance", fill = "")  +  
+  labs( x= "", y = "", size = "Mean Relative abundance", fill = "")  +  
   theme(legend.key=element_blank()) +
   scale_fill_manual(values = mycolors2,guide=FALSE) +
   theme_bw()+
   scale_y_discrete(limits = rev(levels(pcm$variable)))+
   facet_grid(~highlow, scales = "free_x", space = "free_x")+
-  theme(legend.position = "right", axis.text.y = element_text(family="Times New Roman", size = 12),axis.text.x = element_text(colour = "black", size = 12, angle = 45, hjust = 1,family="Times New Roman"))
+  theme(legend.position = "right", axis.text.y = element_text(family="Times New Roman", size = 12),axis.text.x = element_text(colour = "black", size = 10, angle = 30, hjust = 1,family="Times New Roman"))
 xx
 ```
+
 ```{r,fig.width=9,fig.height=8}
 fig6<-(((lowmid+theme(text = element_text(family = "Times New Roman",size=12)))+lowup)+theme(text = element_text(family = "Times New Roman",size=12))) / xx +plot_annotation(tag_levels="A")+theme(text = element_text(family = "Times New Roman",size=12))
 fig6
 
-ggsave("Figure6.png", plot = fig6, width = 25, height = 20, units = "cm", dpi = 300)
+#ggsave("Figure6.png", plot = fig6, width = 25, height = 25, units = "cm", dpi = 300)
 
 ```
 
+## Temporal differences
 
-## Time averages and such full data set
+### Time averages and such full data set
 ```{r}
 dat<-data.frame(sample_data(ps))
 mean(dat$Max.Years.Spent.in.Nursery,na.rm = TRUE)
@@ -911,7 +744,7 @@ mean(datup$Max.Years.Spent.in.Nursery,na.rm = TRUE)
 mean(datup$Max.Years.Spent.from.Original.Collection,na.rm = TRUE)
 median(datup$Max.Years.Spent.in.Nursery,na.rm = TRUE)
 median(datup$Max.Years.Spent.from.Original.Collection,na.rm = TRUE)
-range(datup$Max.Years.Spent.in.Nursery,na.rm = TRUE)
+range(datmid$Max.Years.Spent.in.Nursery,na.rm = TRUE)
 range(datup$Max.Years.Spent.from.Original.Collection,na.rm = TRUE)
 sd(datup$Max.Years.Spent.in.Nursery,na.rm = TRUE)
 sd(datup$Max.Years.Spent.from.Original.Collection,na.rm = TRUE)
@@ -919,14 +752,16 @@ std.error(datup$Max.Years.Spent.in.Nursery,na.rm = TRUE)
 std.error(datup$Max.Years.Spent.from.Original.Collection,na.rm = TRUE)
 range(datlow$Max.Years.Spent.in.Nursery,na.rm=TRUE)
 
+hist(datup$Max.Years.Spent.in.Nursery)
+
+hist(datmid$Max.Years.Spent.in.Nursery)
+
+hist(datlow$Max.Years.Spent.in.Nursery)
 ```
 
 ## Time normality test
 ```{r}
-shapiro.test(dat$Max.Years.Spent.in.Nursery)
-shapiro.test(dat$Max.Years.Spent.from.Original.Collection)
-
-fit1 <- aov((Max.Years.Spent.in.Nursery)~Region,data=subset(dat,subset=Region!="Lower Keys"))
+fit1 <- aov((Max.Years.Spent.in.Nursery)~Region,data=dat)
 shapiro.test(fit1$residuals)
 summary(fit1)
 
@@ -935,8 +770,7 @@ summary(fit1)
 ### Time data is not normal, act accordingly
 ## Time Kruskal Wallis test
 ```{r}
-kruskal.test(Max.Years.Spent.in.Nursery~Region,data=subset(dat,subset=Region!="Lower Keys"))
-kruskal.test(Max.Years.Spent.from.Original.Collection~Region,data=dat)
+kruskal.test(Max.Years.Spent.in.Nursery~Region,data=dat)
 ```
 
 
@@ -970,152 +804,112 @@ timeregpairkruskal<-function(p){
   mult_perm$pvaladj<-p.adjust(mult_perm$pvals,method="bonferroni")
   mult_perm
 }
-fulltimeregpair<-timeregpairkruskal(ps)
-fulltimeregpair
 noouttimeregpait<-timeregpairkruskal(psnoout)
 noouttimeregpait
 ###NO OUTLIERS INCLUDED SINCE ONLY 2 GROUPS (LOW AND UP)
 ```
 
-### Max.Years.Spent.from.Original.Collection
-```{r}
-timeorigregpairkruskal<-function(p){
-  sampledf<-data.frame(sample_data(p))
-  sampledf$Region<-as.factor(sampledf$Region)
-  region.list<-levels(sampledf$Region)
-  region.list
-  aovresults<-c()
-  pvals<-c()
-  locations<-c()
-  for (i in 1:length(region.list)){
-    region.leftout<-region.list[i]
-    date_sub<-subset(sampledf,Region!=region.leftout) #instead of subset_samples use a subset() for the dataframe you are working with
-    #d.sub<-phyloseq::distance(ps_sub, "bray") # won't need this for kruskal
-    #df.new<-subset(sampledf,subset=Region!=region.leftout) # won't need this either
-    PERM<-kruskal.test(Max.Years.Spent.from.Original.Collection~Region,date_sub) #change to kruskal
-    print(PERM)
-    pvals<-c(pvals,PERM$'p.value') #this will change. run a kruskal and save the output to do str(output) to see what it call's the pvalues that it outputs.
-    #aovresults<-rbind(aovresults,PERM$aov.tab) 
-    loc.sub<-region.list[-i]
-    locations<-rbind(locations,c(loc.sub))
-  }
-  aovresults
-  combinedtest<-cbind(locations,pvals)
-  mult_perm<-data.frame(combinedtest)
-  mult_perm
-  mult_perm$pvaladj<-p.adjust(mult_perm$pvals,method="bonferroni")
-  mult_perm
-}
-fulltimeorigregpair<-timeorigregpairkruskal(ps)
-fulltimeorigregpair
-noouttimeorigregpait<-timeorigregpairkruskal(psnoout)
-noouttimeorigregpait
-### OUTLIER NOT NECC HERE BECAUSE ONLY 2 REGIONS HERE
-```
+
 
 
 ## diversity versus time
-```{r}
-scat<-function(alpha,Date){
-    n1<-ggplot(alpha, aes(x = Date, y = rich1, color = Region, fill = Region)) + labs(x = "Date", y = "Richness") + scale_colour_manual(values=c("Lower Keys" = "red", "Middle Keys" = "green", "Upper Keys" = "blue")) + geom_point(size = 2, shape = 1) + facet_grid(~Aquarick, scales = "free_x", space = "free_x") 
-    n2<-ggplot(alpha, aes(x = Date, y = shannon1, color = Region, fill = Region)) + labs(x = "Date", y = "Shannon Diversity") +  scale_colour_manual(values=c("Lower Keys" = "red", "Middle Keys" = "green", "Upper Keys" = "blue")) + geom_point(size = 2, shape = 1) + facet_grid(~Aquarick, scales = "free_x", space = "free_x") 
-    n3<-ggplot(alpha, aes(x = Date, y = invsimp1, color = Region, fill = Region)) + labs(x = "Date", y = "Inverse Simpson Diversity") +  scale_colour_manual(values=c("Lower Keys" = "red", "Middle Keys" = "green", "Upper Keys" = "blue")) + geom_point(size = 2, shape = 1) + facet_grid(~Aquarick, scales = "free_x", space = "free_x") 
-   #n4<-ggplot(alpha_no, aes(x = Date, y = rich1, color = Region)) +  scale_colour_manual(values=c("Lower Keys" = "red", "Middle Keys" = "green", "Upper Keys" = "blue")) + geom_point(size = 2, shape = 1) + ggtitle("No out")
-   #n5<-ggplot(alpha_no, aes(x = Date, y = shannon1, color = Region)) +  scale_colour_manual(values=c("Lower Keys" = "red", "Middle Keys" = "green", "Upper Keys" = "blue")) + geom_point(size = 2, shape = 1) + ggtitle("No out")
-    #n6<-ggplot(alpha_no, aes(x = Date, y = invsimp1, color = Region)) +  scale_colour_manual(values=c("Lower Keys" = "red", "Middle Keys" = "green", "Upper Keys" = "blue")) + geom_point(size = 2, shape = 1) + ggtitle("No out")
-   # n7<-ggplot(alpha_out, aes(x = Date, y = rich1, color = Region)) +  scale_colour_manual(values=c("Lower Keys" = "red", "Middle Keys" = "green", "Upper Keys" = "blue")) + geom_point(size = 2, shape = 1) + ggtitle("out")
-   # n8<-ggplot(alpha_out, aes(x = Date, y = shannon1, color = Region)) +  scale_colour_manual(values=c("Lower Keys" = "red", "Middle Keys" = "green", "Upper Keys" = "blue")) + geom_point(size = 2, shape = 1) + ggtitle("out")
-    #n9<-ggplot(alpha_out, aes(x = Date, y = invsimp1, color = Region)) +  scale_colour_manual(values=c("Lower Keys" = "red", "Middle Keys" = "green", "Upper Keys" = "blue")) + geom_point(size = 2, shape = 1) + ggtitle("out")
-    nfull<- n1 + n2 + n3 + plot_layout(guides="collect")
-    nfull
-}
-pl1<-scat(full_alpha,full_alpha$Max.Years.Spent.in.Nursery)
-pl1
-ggsave("DivsinNursery.tiff", plot = pl1, width = 50, height = 25, units = "cm", dpi = 300)
-
-pl11<-scat(full_alpha,full_alpha$Max.Years.Spent.from.Original.Collection)
-pl11
-ggsave("DivsfromCollection.tiff", plot = pl11, width = 50, height = 25, units = "cm", dpi = 300)
-
-```
-
-```{r}
-divbytime<-function(alpha){
-  print(kruskal.test(rich1~Max.Years.Spent.in.Nursery,data = alpha))
-  print(kruskal.test(shannon1~Max.Years.Spent.in.Nursery,data = alpha))
-  print(kruskal.test(invsimp1~Max.Years.Spent.in.Nursery,data = alpha))
-  print(kruskal.test(rich1~Max.Years.Spent.from.Original.Collection,data = full_alpha))
-  print(kruskal.test(shannon1~Max.Years.Spent.from.Original.Collection,data = alpha))
-  print(kruskal.test(invsimp1~Max.Years.Spent.from.Original.Collection,data = alpha))
-}
-divbytime(full_alpha)
-divbytime(out_alpha)
-divbytime(noout_alpha)
-```
 
 ### kruskal-wallis outlier by time
 ```{r}
-kruskal.test(Outlier~Max.Years.Spent.in.Nursery,data = full_alpha)
-kruskal.test(Outlier~Max.Years.Spent.from.Original.Collection,data = full_alpha)
+kruskal.test(Max.Years.Spent.in.Nursery~Outlier,data = full_alpha)
 ```
 
 ```{r}
-df = as(sample_data(psnoout), "data.frame")
-d = phyloseq::distance(p, "bray")
-df$Site <- as.factor(df$Region)
-PERMANOVA <- adonis(d ~ Max.Years.Spent.in.Nursery, df)
-PERMANOVA
+fit1 <- lm(shannon1~Max.Years.Spent.in.Nursery,data=subset(noout_alpha,subset=Region!="Lower Keys"))
+shapiro.test(fit1$residuals)
+summary(fit1)
 
+shan.div.plot.midup<-ggplot(fit1$model, aes(x =Max.Years.Spent.in.Nursery,y=shannon1)) + geom_point()+
+   stat_smooth(method = "lm", col = "red",se=TRUE,size=.5,alpha=0.1,lty=2)+
+  theme(panel.background = element_blank())+ 
+  theme(text = element_text(family = "Times New Roman"))+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(legend.position="None")+
+  labs(x="time spent in nursery",y="shannon diversity")
+shan.div.plot.midup
+
+fit2 <- lm(log(shannon1)~Max.Years.Spent.in.Nursery,data=subset(noout_alpha,subset=Region=="Lower Keys"))
+shapiro.test(fit2$residuals)
+summary(fit2)
+fit2$model
+shan.div.plot.lower<-ggplot(fit2$model, aes(x =Max.Years.Spent.in.Nursery,y=`log(shannon1)`)) +
+  geom_point()+
+   stat_smooth(method = "lm", col = "red",se=TRUE,size=.5,alpha=0.1,lty=2)+
+  theme(panel.background = element_blank())+ 
+  theme(text = element_text(family = "Times New Roman"))+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(legend.position="None")+
+  labs(x="time spent in nursery",y="log(shannon diversity)")
+shan.div.plot.lower
+
+
+```
+```{r}
+fit1 <- lm(1/log(rich1)~Max.Years.Spent.in.Nursery,data=subset(noout_alpha,subset=Region!="Lower Keys"))
+shapiro.test(fit1$residuals)
+summary(fit1)
+
+rich.plot.midup<-ggplot(fit1$model, aes(x =Max.Years.Spent.in.Nursery,y=`1/log(rich1)`)) + geom_point()+
+   stat_smooth(method = "lm", col = "red",se=TRUE,size=.5,alpha=0.1,lty=2)+
+  theme(panel.background = element_blank())+ 
+  theme(text = element_text(family = "Times New Roman"))+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(legend.position="None")+
+  labs(x="time spent in nursery",y="1/log(Richness)")
+rich.plot.midup
+
+fit2 <- lm(log(rich1)~Max.Years.Spent.in.Nursery,data=subset(noout_alpha,subset=Region=="Lower Keys"))
+shapiro.test(fit2$residuals)
+summary(fit2)
+
+rich.plot.lower<-ggplot(fit2$model, aes(x =Max.Years.Spent.in.Nursery,y=`log(rich1)`)) +
+  geom_point()+
+   stat_smooth(method = "lm", col = "red",se=TRUE,size=.5,alpha=0.1)+
+  theme(panel.background = element_blank())+ 
+  theme(text = element_text(family = "Times New Roman"))+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(legend.position="None")+
+  labs(x="time lower keys genotypes spent in nursery",y="log(Richness)")
+rich.plot.lower
+
+
+```
+
+# ### now beta diversity
+```{r}
 p<-psnoout # nooutlier dataset
 sampledf<-data.frame(sample_data(p))
 sampledf$Region <- as.factor(sampledf$Region)
 d_mat<-phyloseq::distance(p, "bray")
-g_mod<-with(sampledf,betadisper(d_mat,Max.Years.Spent.in.Nursery))
-boxplot(g_mod)
-mod.tukey<-TukeyHSD(g_mod)
-print(mod.tukey)
-labels <- multcompLetters(mod.tukey$group[, "p adj"])$Letters # Fix the order of the labels
-labels <- labels[order(names(labels))]
-bp<-boxplot(g_mod, ylim = c(0,.25), xlab=" ",cex.lab=1.5,cex.axis=1.2)
-text( x=c(1:3),y=bp$stats[nrow(bp$stats),] + 0.05, labels,col="red",cex=1.5) #add labels
-title(outer=TRUE,main="A",cex.main=1.5,line=-1.7,adj=0.01)
-gmod_noout<-g_mod
+g_mod<-with(sampledf,betadisper(d_mat,Region))
+g_mod$distances
 
+noout_alpha$distances<-g_mod$distances
+
+fit1 <- lm((distances)~Max.Years.Spent.in.Nursery,data=subset(noout_alpha,subset=Region!="Lower Keys"))
+shapiro.test(fit1$residuals)
+summary(fit1)
+
+
+fit2<- lm(1/sqrt(distances)~Max.Years.Spent.in.Nursery,data=subset(noout_alpha,subset=Region=="Lower Keys"))
+shapiro.test(fit2$residuals)
+summary(fit2)
 ```
-How many ASVs of? Aquarickettsia
-```{r}
-ps_aquarick<-subset_taxa(ps_acer,Genus=="Aquarickettsia")
-
-```
-
+Because the time spent in the nursery is fairly "grouped" (see histograms), going to bin the data into short and long term in nursery for the lower keys genotypes
 
 ```{r}
-physeq.f.ra
-propData <- as.data.frame((otu_table(physeq.f.ra)))
-plotDF <- propData %>%
-  rownames_to_column(var="taxa") %>%
-  melt() %>%
-  magrittr::set_names(c("sample", "taxa", "relab"))
-head(plotDF)#just checking it worked
-taxonomy.2 <- tax_table(physeq.f) %>%
-  as.data.frame() %>%
-  rownames_to_column(var="taxa")
-head(taxonomy.2)#just checking it worked
-head(plotDF)#just checking it worked
-plotDF <- left_join(plotDF, taxonomy.2, by="taxa") %>%
-  select(taxa, sample, relab, taxa) #would need to update here too if you change it.
-head(plotDF)#just checking it worked
-
-sampdata<-data.frame(sample_data(physeq.f.ra.ord)) #make dataframe of the sample data
-metadata.2 <- sampdata %>%
-  rownames_to_column(var="sample") #make a column of rownames (sample)
-head(metadata.2)
-
-#combine plotDF1 and metadata.2 by sample name
-plotDF <- left_join(plotDF, metadata.2, by="sample") 
-head(plotDF) #just checking it worked
-
+lk.alpha<-subset(full_alpha,subset=Region=="Lower Keys")
+lk.alpha$timebin<-ifelse(lk.alpha$Max.Years.Spent.in.Nursery<=5.86,"short","long")
+t.test(subset(lk.alpha,lk.alpha$timebin=="long")$rich1,subset(lk.alpha,lk.alpha$timebin=="short")$rich1)
 ```
+
+
+### How many ASVs of? Aquarickettsia
 
 ## relative abundances
 ### make mycolors
@@ -1156,7 +950,7 @@ head(plotDF) #just checking it worked
 #### set colors
 ```{r}
 length(levels(factor(plotDF$taxa)))
-mycolors <- c("aquamarine","aquamarine3","cadetblue3","turquoise1","turquoise4")
+mycolors <- c("#1B9E77","aquamarine3","cadetblue3","turquoise1","turquoise4")
 names(mycolors)<-levels(factor(plotDF$taxa))
 mycolors
 #mycolors<-c("#999999", "#FFFF00",  "#CC3300","#0072B2","#660066", "#E69F00", "#56B4E9","#CC79A7","#1B9E77","#AAE247") #colors used by Grace?
@@ -1167,7 +961,7 @@ mycolors
 #plotDF$sample[6133:6142]
 #plotDF$sample<-factor(plotDF$sample,levels=c(plotDF$sample[1:64],plotDF$sample[6133:6142]))
 plotDF2<-subset(plotDF,subset=Outlier=="No")
-ggplot(plotDF2, aes(x=sample, relab, fill=taxa)) + 
+ggplot(plotDF2, aes(x=X2020_Mote_ID, relab, fill=taxa)) + 
   #make it a barplot with classes stacked on top of each other
   geom_bar(stat="identity", position = "stack",aes(fill = reorder(taxa, -relab))) + 
   #set x-axis labels to be oriented vertically, and set the size of the text to 6.5
@@ -1179,6 +973,16 @@ ggplot(plotDF2, aes(x=sample, relab, fill=taxa)) +
   #set legend title size to 8 and legend text size to 6
   theme(legend.title = element_text(size = 8),legend.text = element_text(size = 6),legend.position = "bottom")+
   xlab("2020 Mote ID")+
-  ylab("% Relative Abundance")
+  ylab("% Relative Abundance")+
+  coord_cartesian(ylim=c(0,5))
 
 ```
+
+### ASV1
+From Reviewer 2: It is strange that Aquarickettsia ASV1 was detected as differentially abundant in the Lower Keys compared to both the Middle and Upper Keys (Panels A & B) when the relative abundance of this ASV1 is very similar across regions (Panel C). If you plotted the relative abundance of ASV1 for each genotype in a box & whisker plot (like figs. 4, 5) would it show the pattern behind this?
+
+```{r}
+asv1<-subset(plotDF2,taxa=="ASV_1")
+boxplot(asv1$relab~asv1$Region,ylim=c(70,100),ylab="Relative abundance of ASV 1",xlab="Initial Collection Region")
+```
+

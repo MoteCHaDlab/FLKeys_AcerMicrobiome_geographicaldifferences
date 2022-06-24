@@ -43,6 +43,7 @@ ps_acer<-readRDS("acer_ps_rename_rare.rds")
 ps_acer
 ps_acer_norare<-readRDS("acer_ps_rename.rds")
 ps_acer_norare
+#tax_table(ps_acer)
 d<-data.frame()
 d <- data.frame(sample_data(ps_acer))
 d[d$Region=="Middle Keys",]$Outlier<-"No" #wasn't saved in phyloseq object used so have to add now
@@ -298,11 +299,11 @@ ps_rel_genus_melt$genus[ps_rel_genus_melt$genus != "Aquarickettsia" &
 #ps_rel_genus_melt$Outlier<-as.factor(ps_rel_genus_melt$Outlier)
   
 ps_rel_genus_melt$X2020_Mote_ID <-as.factor(ps_rel_genus_melt$X2020_Mote_ID)
-
+#1B9E77aqua, #CC3300 the red, the light blue #56B4E9
 # plot
 bar_species = ggplot(ps_rel_genus_melt, aes(x = forcats::fct_reorder(X2020_Mote_ID, out.num), y=Abundance)) + 
   geom_bar(stat="identity", position="fill", aes(fill = with(ps_rel_genus_melt,reorder(genus, Abundance)))) +
-  scale_fill_manual(values=c("#1B9E77","#0072B2", "#56B4E9","#E69F00","#660066", "#CC3300", "#FFFF00", "#CC79A7","dark grey","light grey"), 
+  scale_fill_manual(values=c("#009E75","#0072B2", "#5","#E69F00","#660066", "#D55E00", "#FFFF00", "#CC79A7","dark grey","light grey"), 
                     breaks = c("Aquarickettsia","Enterococcus","Unclassified_ASV_3","Unclassified_ASV_6","Family_Helicobacteraceae","Family_P3OB-42","Romboutsia","Spirochaeta_2", "Unclassified_ASV_13","low abundance"),
                     labels = c("Aquarickettsia","Enterococcus","Unclassified_ASV_3","Unclassified_ASV_6","Family_Helicobacteraceae","Family_P3OB-42","Romboutsia","Spirochaeta_2", "Unclassified_ASV_13","low abundance")) +
   facet_grid(~Region, scales = "free_x", space = "free_x") +
@@ -320,7 +321,7 @@ bar_species = ggplot(ps_rel_genus_melt, aes(x = forcats::fct_reorder(X2020_Mote_
   labs(fill = "Genus", size = "Genus")
 
 bar_species
-#ggsave(filename="Figure2.png", plot=bar_species,width=35, height=20 , units="cm",device="png", dpi=300)
+ggsave(filename="Figure2b.png", plot=bar_species,width=35, height=20 , units="cm",device="png", dpi=300)
 
 ```
 
